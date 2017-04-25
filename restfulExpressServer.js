@@ -1,223 +1,102 @@
-'use strict';
+'use strict'
 
-const fs = require('fs');
-const path = require('path');
-const petsPath = path.join(__dirname, 'pets.json');
-
-const express = require('express');
-const app = express();
-const port = process.env.PORT || 8000;
-
-const basicAuth = require('basic-auth');
-const bodyParser = require('body-parser');
-const morgan = require('morgan');
-
+var express = require('express')
+var app = express()
+var path = require('path')
+var pathArray = path.join(__dirname, 'pets.json');
+var fs = require('fs')
+var url = require('url')
 app.disable('x-powered-by');
+app.set('port', process.env.PORT || 5000);
+var morgan = require('morgan');
 app.use(morgan('short'));
-
-// ---== Bonus ==---
-
-app.use((req, res, next) => {
-  const creds = basicAuth(req);
-
-  if (creds && creds.name === 'admin' && creds.pass === 'meowmix') {
-    return next();
-  }
-
-  res.set('WWW-Authenticate', 'Basic realm="Required"');
-  res.sendStatus(401);
-});
-
+var bodyParser = require('body-parser');
 app.use(bodyParser.json());
 
-app.get('/pets', (_req, res, next) => {
-  fs.readFile(petsPath, 'utf8', (err, petsJSON) => {
-    if (err) {
-      return next(err);
-    }
+app.get('/pets', function(req, res, next) {
+   fs.readFile(pathArray, 'utf8', function (err, data){
+      if (err) throw err;
+      res.send(JSON.parse(data))
+   })
+})
 
-    const pets = JSON.parse(petsJSON);
+app.get('/pets/:index', function(req, res) {
+    var index = Number.parseInt(req.params.index);
+    fs.readFile('pets.json', 'utf8', (err, data) => {
+        let parsedData = JSON.parse(data)
+        if (Number.isNaN(index) || index < 0 || index >= parsedData.length) {
+            return res.sendStatus(404);
+        }
+        res.send(parsedData[index]);
+    })
+})
 
-    res.send(pets);
-  });
+app.post('/pets', function(req, res, next){
+   var pet = req.body
+   if (!pet || pet.name === ''){
+      return res.sendStatus(400)
+   } else {
+      fs.readFile(pathArray, 'utf8', function (err, data){
+         if (err) throw err;
+         let pets = JSON.parse(data)
+         pets.push(pet)
+         fs.writeFile(pathArray, JSON.stringify(pets), function(err){
+            if (err) throw err;
+         })
+      })
+      res.send(pet)
+   }
+})
+
+app.patch('/pets/1', function(req, res, next){
+   let pet = req.body
+   if (!pet || pet.name === ''){
+      return res.sendStatus(400)
+   }
+   else if (pet.kind === undefined) {
+      fs.readFile(pathArray, 'utf8', function (err, data){
+         if (err) throw err;
+         let pets = JSON.parse(data)
+         let newPet = pets[1]
+         newPet.age = pet.age
+         pet = pets[1]
+         res.send(pet)
+          fs.writeFile(pathArray, JSON.stringify(pets), function(err){
+            if (err) throw err;
+         })
+      })
+   }
+   else {
+      fs.readFile(pathArray, 'utf8', function (err, data){
+         if (err) throw err;
+         let pets = JSON.parse(data)
+         pets.splice(1, 0, pet)
+         fs.writeFile(pathArray, JSON.stringify(pets), function(err){
+            if (err) throw err;
+         })
+      })
+   res.send(pet)
+   }
+})
+
+app.delete('/pets/:index', function(req, res) {
+    fs.readFile(pathArray, 'utf8', function(err, data) {
+        if (err) throw err;
+        let index = Number.parseInt(req.params.index)
+        var pet = JSON.parse(data)
+        if (Number.isNaN(index) || index < 0 || index >= pet.length) {
+            return res.sendStatus(404);
+        }
+        let deletedPet = pet.splice(index, 1);
+        let petJson = JSON.stringify(deletedPet)
+        fs.writeFile(pathArray, petJson, (writeErr) => {
+            if (writeErr) throw writeErr
+            res.send(deletedPet[0])
+        })
+    })
+})
+
+app.listen(app.get('port'), function() {
+  console.log('Listening on', app.get('port'));
 });
-
-app.get('/pets/:id', (req, res, next) => {
-  fs.readFile(petsPath, 'utf8', (err, petsJSON) => {
-    if (err) {
-      return next(err);
-    }
-
-    const id = Number.parseInt(req.params.id);
-    const pets = JSON.parse(petsJSON);
-
-    if (id < 0 || id >= pets.length || Number.isNaN(id)) {
-      return res.sendStatus(404);
-    }
-
-    res.send(pets[id]);
-  });
-});
-
-app.post('/pets', (req, res, next) => {
-  fs.readFile(petsPath, 'utf8', (readErr, petsJSON) => {
-    if (readErr) {
-      return next(readErr);
-    }
-
-    const pets = JSON.parse(petsJSON);
-    const age = Number.parseInt(req.body.age);
-    const kind = req.body.kind;
-    const name = req.body.name;
-
-    if (Number.isNaN(age) || !kind || !name) {
-      return res.sendStatus(400);
-    }
-
-    const pet = { age, kind, name };
-
-    pets.push(pet);
-
-    const newPetsJSON = JSON.stringify(pets);
-
-    fs.writeFile(petsPath, newPetsJSON, (writeErr) => {
-      if (writeErr) {
-        return next(writeErr);
-      }
-
-      res.send(pet);
-    });
-  });
-});
-
-app.patch('/pets/:id', (req, res, next) => {
-  // eslint-disable-next-line max-statements
-  fs.readFile(petsPath, 'utf8', (readErr, petsJSON) => {
-    if (readErr) {
-      return next(readErr);
-    }
-
-    const id = Number.parseInt(req.params.id);
-    const pets = JSON.parse(petsJSON);
-
-    if (id < 0 || id >= pets.length || Number.isNaN(id)) {
-      return res.sendStatus(404);
-    }
-
-    const age = Number.parseInt(req.body.age);
-    const { kind, name } = req.body;
-
-    if (!Number.isNaN(age)) {
-      pets[id].age = age;
-    }
-
-    if (kind) {
-      pets[id].kind = kind;
-    }
-
-    if (name) {
-      pets[id].name = name;
-    }
-
-    const newPetsJSON = JSON.stringify(pets);
-
-    fs.writeFile(petsPath, newPetsJSON, (writeErr) => {
-      if (writeErr) {
-        return next(writeErr);
-      }
-
-      res.send(pets[id]);
-    });
-  });
-});
-
-app.patch('/pets/:id', (req, res, next) => {
-  // eslint-disable-next-line max-statements
-  fs.readFile(petsPath, 'utf8', (readErr, petsJSON) => {
-    if (readErr) {
-      return next(readErr);
-    }
-
-    const id = Number.parseInt(req.params.id);
-    const pets = JSON.parse(petsJSON);
-
-    if (id < 0 || id >= pets.length || Number.isNaN(id)) {
-      return res.sendStatus(404);
-    }
-
-    const pet = pets[id];
-    const age = Number.parseInt(req.body.age);
-    const kind = req.body.kind;
-    const name = req.body.name;
-
-    if (!Number.isNaN(age)) {
-      pet.age = age;
-    }
-
-    if (kind) {
-      pet.kind = kind;
-    }
-
-    if (name) {
-      pet.name = name;
-    }
-
-    const newPetsJSON = JSON.stringify(pets);
-
-    fs.writeFile(petsPath, newPetsJSON, (writeErr) => {
-      if (writeErr) {
-        return next(writeErr);
-      }
-
-      res.send(pet);
-    });
-  });
-});
-
-app.delete('/pets/:id', (req, res, next) => {
-  fs.readFile(petsPath, 'utf8', (readErr, petsJSON) => {
-    if (readErr) {
-      return next(readErr);
-    }
-
-    const id = Number.parseInt(req.params.id);
-    const pets = JSON.parse(petsJSON);
-
-    if (id < 0 || id >= pets.length || Number.isNaN(id)) {
-      return res.sendStatus(404);
-    }
-
-    const pet = pets.splice(id, 1)[0];
-    const newPetsJSON = JSON.stringify(pets);
-
-    fs.writeFile(petsPath, newPetsJSON, (writeErr) => {
-      if (writeErr) {
-        return next(writeErr);
-      }
-
-      res.send(pet);
-    });
-  });
-});
-
-app.get('/boom', (_req, _res, next) => {
-  next(new Error('BOOM!'));
-});
-
-app.use((_req, res) => {
-  res.sendStatus(404);
-});
-
-// eslint-disable-next-line max-params
-app.use((err, _req, res, _next) => {
-  // eslint-disable-next-line no-console
-  console.error(err.stack);
-  res.sendStatus(500);
-});
-
-app.listen(port, () => {
-  // eslint-disable-next-line no-console
-  console.log('Listening on port', port);
-});
-
-module.exports = app;
+module.exports = app
